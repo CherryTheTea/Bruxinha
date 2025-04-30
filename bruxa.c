@@ -9,20 +9,27 @@
 #include "transform.h"
 #include "tilemap.h"
 
-
+int E = 32;
+int rad;
 
 
 typedef struct entity_struct{
 
     int id;
     int ti, tj;//coordenadas na spritesheet;
+    float vel;
 
     vec2d pos;
     vec2d corners [4];
 
 } Entity;
 
-
+void refresh_corners( Entity *E ){
+    E->corners[0] = v2d( E->pos.x - rad, E->pos.y - rad );
+    E->corners[1] = v2d( E->pos.x + rad, E->pos.y - rad );
+    E->corners[2] = v2d( E->pos.x + rad, E->pos.y + rad );
+    E->corners[3] = v2d( E->pos.x - rad, E->pos.y + rad );
+}
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~O~~~~~~~~~~| M A I N |~~~~~~~~~~~O~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 int main(int argc, char *argv[]){
 
@@ -53,10 +60,13 @@ int main(int argc, char *argv[]){
 
     Transform T = (Transform){256,256,cx,cy,1,1};
     int scaleI = 0;
+
+    int hE = E/2;
+    rad = hE-2;
     
     Tilemap MAP;
-    int E = 32;
-    int hE = 16;
+    
+    
     MAP.L = E;
     load_tilemap( "Assets/o mapa.tmx", &MAP );;
     MAP.spritesheet_pitch = 17;
@@ -67,6 +77,8 @@ int main(int argc, char *argv[]){
 
     Entity player;
     player.pos = v2d( 256, 256 );
+    player.vel = 3;
+    refresh_corners( &player );
     player.id = 46;
     player.ti = player.id % MAP.spritesheet_pitch;
     player.tj = player.id / MAP.spritesheet_pitch;
@@ -77,7 +89,7 @@ int main(int argc, char *argv[]){
     int frame_period = SDL_roundf( 1000 / 60.0 );
 
     SDL_Log("<<Entering Loop>>");
-    while ( loop ) { //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> L O O P <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< 
+    while ( loop ) { //>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> E O O P <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< 
         
         SDL_Event event;
         while( SDL_PollEvent(&event) ){
@@ -100,32 +112,78 @@ int main(int argc, char *argv[]){
             }
         }
 
+        vec2d desloc = {0,0};
         if( p1u ){
-            player.pos.y -= 3;
+            desloc.y = -1;
         }
         if( p1d ){
-            player.pos.y += 3;
+            desloc.y = 1;
         }
         if( p1l ){
-            player.pos.x -= 3;
+            desloc.x = -1;
         }
         if( p1r  ){
-            player.pos.x += 3;
+            desloc.x = 1;
+        }
+        if( desloc.x != 0 || desloc.y != 0 ){
+            desloc = v2d_setlen(desloc, player.vel);
+        }
+        
+        vec2d desloc_corners [4];// coordenadas em tiles
+        for (int i = 0; i < 4; ++i){
+            desloc_corners[i] = v2d_sum( player.corners[i], desloc );
+            desloc_corners[i].x = floor( desloc_corners[i].x / E );
+            desloc_corners[i].y = floor( desloc_corners[i].y / E );
         }
 
 
-        //if( world[currentMap].map[I[i]][y].solid ){
+        bool blocked = false;//x pra y
+        int blocks = 0;
+        for(int i = 0; i < 4; i++){
+          int y = floor(player.corners[i].y / E);
+          if( desloc_corners[i].x >= 0 && desloc_corners[i].x < MAP.chunk_cols ){// checar se o passo fugiu do mapa
+            if( MAP.solid[ (int)(desloc_corners[i].x) + (MAP.chunk_cols * y) ] ){
+              blocked = true;
+              break;
+            }
+          }
+          else blocked = true;
+        }
+        if( blocked ) ++blocks;
+        else player.pos.x += desloc.x;
+        
+        blocked = false;
+        for(int i = 0; i < 4; i++){
+          int x = floor(player.corners[i].x / E);
+          if( desloc_corners[i].y >= 0 && desloc_corners[i].y < MAP.chunk_rows){
+            if( MAP.solid[ x + (MAP.chunk_cols * (int)(desloc_corners[i].y)) ] ){
+              blocked = true;
+              break;
+            }
+          }
+          else blocked = true;
+        }
+        if( blocked ) ++blocks;
+        else player.pos.y += desloc.y;
+
+        refresh_corners( &player );
+
+
+
+
+        //if( world[currentMap].map[desloc_corners[i].x][y].solid ){
 
         //if( solid[ newcorner[i].x ][ newcorner[i].y ] ){
 
         render_layer( R, spritesheet, &MAP, MAP.background, &T );
+        render_layer( R, spritesheet, &MAP, MAP.midground, &T );
 
+        // desenhar player
         SDL_FRect src = (SDL_FRect){ player.ti * E, player.tj * E, E, E };
         SDL_FRect dst = (SDL_FRect){ atfX( player.pos.x - hE, &T ),
                                      atfY( player.pos.y - hE, &T ), E, E };
         SDL_RenderTexture( R, spritesheet, &src, &dst );
 
-        render_layer( R, spritesheet, &MAP, MAP.midground, &T );
 
 
 
@@ -135,7 +193,7 @@ int main(int argc, char *argv[]){
         // try to maintain constant framerate
         SDL_framerateDelay( frame_period );
 
-    }//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> / L O O P <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+    }//>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> / E O O P <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
     SDL_DestroyRenderer(R);
     SDL_DestroyWindow(window);
