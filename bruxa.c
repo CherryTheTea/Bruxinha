@@ -9,18 +9,91 @@
 #include "transform.h"
 #include "tilemap.h"
 
+int E = 32;
+int hE = 16;
+int spritesheet_pitch;
 
+
+enum { VAZIO, HUMANOIDE, PLANTA };
+
+typedef struct {
+
+    //float habilidade;
+    float carisma;
+    float velocidade;
+
+} atributos_humanoide;
+
+typedef struct{
+
+    int etapas_de_crescimento;
+
+} Especie_de_planta;
+
+typedef struct{
+
+    int maturidade;
+    float humidade;
+
+    int especie;
+    int modo_de_coleta; 
+    /*
+    0: mão
+    1: luva
+    2: pá
+    */
+
+} atributo_plantas;
 
 
 typedef struct entity_struct{
 
-    int id;
+    int id; // tile
     int ti, tj;//coordenadas na spritesheet;
+
+    int tipo;
+    void *atributos; // pode ser qualquer coisa
 
     vec2d pos;
     vec2d corners [4];
 
 } Entity;
+
+void entity_set_id( Entity *ent, int id ){
+    ent->id = id;
+    ent->ti = id % spritesheet_pitch;
+    ent->tj = id / spritesheet_pitch;
+}
+
+void draw_entity( SDL_Renderer *R, Entity *ent, SDL_Texture *spritesheet, Transform *T ){
+    SDL_FRect src = (SDL_FRect){ ent->ti * E, ent->tj * E, E, E };
+    SDL_FRect dst = (SDL_FRect){ atfX( ent->pos.x - hE, T ),
+                                 atfY( ent->pos.y - hE, T ), E, E };
+    SDL_RenderTexture( R, spritesheet, &src, &dst );
+}
+
+void tick_entity( Entity *ent ){
+
+    switch( ent->tipo ){
+
+        case HUMANOIDE:
+
+            break;
+
+        case PLANTA:
+            atributo_plantas *ap = (atributo_plantas*)(ent->atributos);
+
+            ap->maturidade += 1;
+
+            if( ap->maturidade > 100 ){
+                // if( maturidade > Especies[ ap->especie ].etapas_de_crescimento )... checar se já cresceu o max
+                entity_set_id( ent, ent->id + 1 );
+                ap->maturidade = 0;
+            }
+
+            break;
+    }
+}
 
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~O~~~~~~~~~~| M A I N |~~~~~~~~~~~O~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -55,23 +128,28 @@ int main(int argc, char *argv[]){
     int scaleI = 0;
     
     Tilemap MAP;
-    int E = 32;
-    int hE = 16;
     MAP.L = E;
-    load_tilemap( "Assets/o mapa.tmx", &MAP );;
-    MAP.spritesheet_pitch = 17;
+    load_tilemap( "Assets/o mapa.tmx", &MAP );
+    spritesheet_pitch = 17;
+    MAP.spritesheet_pitch = spritesheet_pitch;
 
     SDL_Texture *spritesheet = IMG_LoadTexture( R, "Assets/tiles.png" );
     if( spritesheet != NULL ) SDL_Log( "Loaded spritesheet." );
     else SDL_Log( "Failed to load spritesheet, : %s", SDL_GetError() );
 
     Entity player;
+    player.tipo = HUMANOIDE;
     player.pos = v2d( 256, 256 );
-    player.id = 46;
-    player.ti = player.id % MAP.spritesheet_pitch;
-    player.tj = player.id / MAP.spritesheet_pitch;
+    entity_set_id( &player, 46 );
     bool p1u = 0, p1d = 0, p1l = 0, p1r = 0; // up down left right
-    
+
+
+    Entity entidades [100];
+    int entidades_n = 0;
+
+    //ap atributos da plantinha
+
+
     
     //our desired frame period
     int frame_period = SDL_roundf( 1000 / 60.0 );
@@ -96,6 +174,22 @@ int main(int argc, char *argv[]){
                     else if( event.key.key == 's' ) p1d = 0;
                     else if( event.key.key == 'a' ) p1l = 0;
                     else if( event.key.key == 'd' ) p1r = 0;
+                    else if( event.key.key == 'p' ){
+
+                        int I = entidades_n;
+                        entidades_n += 1;
+
+                        entidades[I].tipo = PLANTA;
+                        entidades[I].pos = player.pos;
+                        entity_set_id( entidades + I, 323 ); // <- id da planta apropriada
+
+                        entidades[I].atributos = SDL_malloc( sizeof(atributo_plantas) );
+                        atributo_plantas *ap = (atributo_plantas*)(entidades[I].atributos);
+                        ap->maturidade = 0;
+                        ap->humidade = 0;
+                        ap->especie = 0;
+                        ap->modo_de_coleta = 0;
+                    }
                     break;
             }
         }
@@ -120,10 +214,14 @@ int main(int argc, char *argv[]){
 
         render_layer( R, spritesheet, &MAP, MAP.background, &T );
 
-        SDL_FRect src = (SDL_FRect){ player.ti * E, player.tj * E, E, E };
-        SDL_FRect dst = (SDL_FRect){ atfX( player.pos.x - hE, &T ),
-                                     atfY( player.pos.y - hE, &T ), E, E };
-        SDL_RenderTexture( R, spritesheet, &src, &dst );
+        // desenhando o player
+        draw_entity( R, &player, spritesheet, &T );
+
+        // desenhar as entidades;
+        for (int i = 0; i < entidades_n; ++i ){
+            draw_entity( R, entidades + i, spritesheet, &T );
+            tick_entity( entidades + i );
+        }
 
         render_layer( R, spritesheet, &MAP, MAP.midground, &T );
 
