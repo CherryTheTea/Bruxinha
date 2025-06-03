@@ -1,3 +1,9 @@
+/* TO DO
+- checar se o tile esta livre antes de colocar a planta.
+- basear a planta plantada num item semente que o player esta usando
+- coletar plantas
+
+*/
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
@@ -11,6 +17,7 @@
 
 int E = 32;
 int hE = 16;
+int rad;
 int spritesheet_pitch;
 
 
@@ -26,9 +33,24 @@ typedef struct {
 
 typedef struct{
 
-    int etapas_de_crescimento;
+    char nome [64];
+    int id;
+
+    int fases; // numero de fases de crescimento
+    int periodo; // duração total do crescimento em frames
+
+    int modo_de_coleta; 
+    /*
+    0: mão
+    1: luva
+    2: pá
+    */
 
 } Especie_de_planta;
+
+Especie_de_planta bib_de_plantas [] = { {"Alho", 323, 8, 120, 0 } };
+
+
 
 typedef struct{
 
@@ -36,12 +58,7 @@ typedef struct{
     float humidade;
 
     int especie;
-    int modo_de_coleta; 
-    /*
-    0: mão
-    1: luva
-    2: pá
-    */
+    
 
 } atributo_plantas;
 
@@ -50,6 +67,7 @@ typedef struct entity_struct{
 
     int id; // tile
     int ti, tj;//coordenadas na spritesheet;
+    float vel;
 
     int tipo;
     void *atributos; // pode ser qualquer coisa
@@ -83,16 +101,25 @@ void tick_entity( Entity *ent ){
         case PLANTA:
             atributo_plantas *ap = (atributo_plantas*)(ent->atributos);
 
-            ap->maturidade += 1;
+            if( ap->maturidade < bib_de_plantas[ ap->especie ].periodo ){
+                ap->maturidade += 1;
 
-            if( ap->maturidade > 100 ){
-                // if( maturidade > Especies[ ap->especie ].etapas_de_crescimento )... checar se já cresceu o max
-                entity_set_id( ent, ent->id + 1 );
-                ap->maturidade = 0;
+                int f = ap->maturidade / bib_de_plantas[ ap->especie ].fases;
+                if( f >= bib_de_plantas[ ap->especie ].fases ){// ja passou
+                    f = bib_de_plantas[ ap->especie ].fases -1;// trava
+                }
+                entity_set_id( ent, bib_de_plantas[ ap->especie ].id + f );
             }
 
             break;
     }
+}
+
+void refresh_corners( Entity *E ){
+    E->corners[0] = v2d( E->pos.x - rad, E->pos.y - rad );
+    E->corners[1] = v2d( E->pos.x + rad, E->pos.y - rad );
+    E->corners[2] = v2d( E->pos.x + rad, E->pos.y + rad );
+    E->corners[3] = v2d( E->pos.x - rad, E->pos.y + rad );
 }
 
 
@@ -126,6 +153,8 @@ int main(int argc, char *argv[]){
 
     Transform T = (Transform){256,256,cx,cy,1,1};
     int scaleI = 0;
+
+    rad = hE-2;
     
     Tilemap MAP;
     MAP.L = E;
@@ -140,6 +169,7 @@ int main(int argc, char *argv[]){
     Entity player;
     player.tipo = HUMANOIDE;
     player.pos = v2d( 256, 256 );
+    player.vel = 3;
     entity_set_id( &player, 46 );
     bool p1u = 0, p1d = 0, p1l = 0, p1r = 0; // up down left right
 
@@ -179,33 +209,82 @@ int main(int argc, char *argv[]){
                         int I = entidades_n;
                         entidades_n += 1;
 
+                        int semente = 0;// placeholder
+
                         entidades[I].tipo = PLANTA;
                         entidades[I].pos = player.pos;
-                        entity_set_id( entidades + I, 323 ); // <- id da planta apropriada
+                        entidades[I].pos.x = SDL_floor( entidades[I].pos.x / E ) * E + hE;
+                        entidades[I].pos.y = SDL_floor( entidades[I].pos.y / E ) * E + hE;
+                        entity_set_id( entidades + I, bib_de_plantas[semente].id );
 
                         entidades[I].atributos = SDL_malloc( sizeof(atributo_plantas) );
                         atributo_plantas *ap = (atributo_plantas*)(entidades[I].atributos);
                         ap->maturidade = 0;
                         ap->humidade = 0;
-                        ap->especie = 0;
-                        ap->modo_de_coleta = 0;
+                        ap->especie = semente;
                     }
                     break;
             }
         }
 
+        vec2d desloc = {0,0};
         if( p1u ){
-            player.pos.y -= 3;
+            desloc.y = -1;
         }
         if( p1d ){
-            player.pos.y += 3;
+            desloc.y = 1;
         }
         if( p1l ){
-            player.pos.x -= 3;
+            desloc.x = -1;
         }
-        if( p1r  ){
-            player.pos.x += 3;
+        if( p1r ){
+            desloc.x = 1;
         }
+        if( desloc.x != 0 || desloc.y != 0 ){
+            desloc = v2d_setlen(desloc, player.vel);
+        }
+        //SDL_Log("desloc.x: %lg, desloc.y: %lg \n", desloc.x, desloc.y );
+        
+        vec2d desloc_corners [4];// coordenadas em tiles
+        for (int i = 0; i < 4; ++i){
+            desloc_corners[i] = v2d_sum( player.corners[i], desloc );
+            desloc_corners[i].x = floor( desloc_corners[i].x / E );
+            desloc_corners[i].y = floor( desloc_corners[i].y / E );
+        }
+
+
+        bool blocked = false;//x pra y
+        int blocks = 0;
+        for(int i = 0; i < 4; i++){
+          int y = floor(player.corners[i].y / E);
+          if( desloc_corners[i].x >= 0 && desloc_corners[i].x < MAP.chunk_cols ){// checar se o passo fugiu do mapa
+            if( MAP.solid[ (int)(desloc_corners[i].x) + (MAP.chunk_cols * y) ] ){
+              blocked = true;
+              //SDL_Log("Blocked X");
+              break;
+            }
+          }
+          else blocked = true;
+        }
+        if( blocked ) ++blocks;
+        else player.pos.x += desloc.x;
+        
+        blocked = false;
+        for(int i = 0; i < 4; i++){
+          int x = floor(player.corners[i].x / E);
+          if( desloc_corners[i].y >= 0 && desloc_corners[i].y < MAP.chunk_rows){
+            if( MAP.solid[ x + (MAP.chunk_cols * (int)(desloc_corners[i].y)) ] ){
+              blocked = true;
+              //SDL_Log("Blocked Y");
+              break;
+            }
+          }
+          else blocked = true;
+        }
+        if( blocked ) ++blocks;
+        else player.pos.y += desloc.y;
+
+        refresh_corners( &player );
 
 
         //if( world[currentMap].map[I[i]][y].solid ){
