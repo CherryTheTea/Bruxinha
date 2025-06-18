@@ -206,22 +206,39 @@ int main(int argc, char *argv[]){
                     else if( event.key.key == 'd' ) p1r = 0;
                     else if( event.key.key == 'p' ){
 
-                        int I = entidades_n;
-                        entidades_n += 1;
+                        float tx = SDL_floor( player.pos.x / E ) * E + hE;
+                        float ty = SDL_floor( player.pos.y / E ) * E + hE;
 
-                        int semente = 0;// placeholder
+                        bool ocupado = false;
 
-                        entidades[I].tipo = PLANTA;
-                        entidades[I].pos = player.pos;
-                        entidades[I].pos.x = SDL_floor( entidades[I].pos.x / E ) * E + hE;
-                        entidades[I].pos.y = SDL_floor( entidades[I].pos.y / E ) * E + hE;
-                        entity_set_id( entidades + I, bib_de_plantas[semente].id );
+                        for (int e = 0; e < entidades_n; ++e ){
+                            float md = SDL_fabs(entidades[e].pos.x - tx) + SDL_fabs(entidades[e].pos.y - ty);
+                            if( md < 2 ){
+                                SDL_Log("ocupado!: %d, %g\n", e, md );
+                                ocupado = true;
+                                break;
+                            }
+                        }
 
-                        entidades[I].atributos = SDL_malloc( sizeof(atributo_plantas) );
-                        atributo_plantas *ap = (atributo_plantas*)(entidades[I].atributos);
-                        ap->maturidade = 0;
-                        ap->humidade = 0;
-                        ap->especie = semente;
+                        if( !ocupado ){
+
+                            int I = entidades_n;
+                            entidades_n += 1;
+
+                            int semente = 0;// placeholder
+
+                            entidades[I].tipo = PLANTA;
+                            //entidades[I].pos = player.pos;
+                            entidades[I].pos.x = tx;
+                            entidades[I].pos.y = ty;
+                            entity_set_id( entidades + I, bib_de_plantas[semente].id );
+
+                            entidades[I].atributos = SDL_malloc( sizeof(atributo_plantas) );
+                            atributo_plantas *ap = (atributo_plantas*)(entidades[I].atributos);
+                            ap->maturidade = 0;
+                            ap->humidade = 0;
+                            ap->especie = semente;
+                        }
                     }
                     break;
             }
