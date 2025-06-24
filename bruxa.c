@@ -1,8 +1,8 @@
 /* TO DO
-- checar se o tile esta livre antes de colocar a planta.
 - basear a planta plantada num item semente que o player esta usando
+    - fazer um botão que controla o player_active_item para...
+    - testar o novo sistema de inventario
 - coletar plantas
-
 */
 #include <stdlib.h>
 #include <stdio.h>
@@ -21,7 +21,7 @@ int rad;
 int spritesheet_pitch;
 
 
-enum { VAZIO, HUMANOIDE, PLANTA };
+enum { VAZIO, HUMANOIDE, PLANTA, SEMENTE, FERRAMENTA };
 
 typedef struct {
 
@@ -48,19 +48,45 @@ typedef struct{
 
 } Especie_de_planta;
 
-Especie_de_planta bib_de_plantas [] = { {"Alho", 323, 8, 120, 0 } };
-
+Especie_de_planta bib_de_plantas [] = { {   "Alho", 423, 36, 120, 0 },
+                                        {"Abacaxi", 223, 21, 120, 0 },
+                                        {"Abacate", 123, 17, 120, 0 },
+                                        {"Alecrim", 323,  4, 120, 0 },
+                                        { "Arruda", 523,  3, 120, 0 },
+                                        {"Aroeira", 623,  7, 120, 0 } };
 
 
 typedef struct{
 
+    Especie_de_planta *especie;
+
     int maturidade;
     float humidade;
 
-    int especie;
-    
-
 } atributo_plantas;
+
+
+typedef struct{
+
+    char name [64];
+    int tipo;
+    void *atributos;
+    int max_stack;
+    //int preco;
+
+} Item_data;// Platonico
+
+Item_data bib_de_itens [] = { { "Semente de Alho",    SEMENTE, bib_de_plantas + 0, 64 },
+                              { "Semente de Abacaxi", SEMENTE, bib_de_plantas + 1, 64 }, };
+
+
+typedef struct{
+
+    Item_data *data;
+    int quantidade;
+    int durabilidade;
+
+} Item_inst;// instancia, copia
 
 
 typedef struct entity_struct{
@@ -71,6 +97,9 @@ typedef struct entity_struct{
 
     int tipo;
     void *atributos; // pode ser qualquer coisa
+
+    Item_inst *inventario;
+    int slots;
 
     vec2d pos;
     vec2d corners [4];
@@ -171,6 +200,14 @@ int main(int argc, char *argv[]){
     player.pos = v2d( 256, 256 );
     player.vel = 3;
     entity_set_id( &player, 46 );
+    player.slots = 32;
+    player.inventario = SDL_calloc( player.slots, sizeof(Item_inst) );
+    player.inventario[0] = (Item_inst){ bib_de_itens + 0, 5, 100 };
+    player.inventario[1] = (Item_inst){ bib_de_itens + 1, 5, 100 };
+
+    int player_active_item = 0;// item na mão
+
+
     bool p1u = 0, p1d = 0, p1l = 0, p1r = 0; // up down left right
 
 
@@ -206,6 +243,11 @@ int main(int argc, char *argv[]){
                     else if( event.key.key == 'd' ) p1r = 0;
                     else if( event.key.key == 'p' ){
 
+                        Item_inst *semente = player.inventario + player_active_item;
+                        if( semente->data->tipo != SEMENTE ){
+                            SDL_Log( "tentando plantar algo que nao e uma semente...." );
+                        }
+
                         float tx = SDL_floor( player.pos.x / E ) * E + hE;
                         float ty = SDL_floor( player.pos.y / E ) * E + hE;
 
@@ -225,19 +267,25 @@ int main(int argc, char *argv[]){
                             int I = entidades_n;
                             entidades_n += 1;
 
-                            int semente = 0;// placeholder
-
                             entidades[I].tipo = PLANTA;
                             //entidades[I].pos = player.pos;
                             entidades[I].pos.x = tx;
                             entidades[I].pos.y = ty;
-                            entity_set_id( entidades + I, bib_de_plantas[semente].id );
+
+                            semente->quantidade -= 1;// consome uma semente
+                            if( semente->quantidade <= 0 ){ // acabou..
+                                semente->data = NULL; // apaga o item
+                            }
+
+                            Especie_de_planta *ep = (Especie_de_planta*)( semente->data->atributos );
+                            entity_set_id( entidades + I, ep->id );
 
                             entidades[I].atributos = SDL_malloc( sizeof(atributo_plantas) );
                             atributo_plantas *ap = (atributo_plantas*)(entidades[I].atributos);
+                            ap->especie = ep; // especie da planta é igual ao da semente
                             ap->maturidade = 0;
                             ap->humidade = 0;
-                            ap->especie = semente;
+                            
                         }
                     }
                     break;
